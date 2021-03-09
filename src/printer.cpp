@@ -8,6 +8,10 @@
 #include <setupapi.h>
 #include <initguid.h>
 #include <devguid.h>
+
+#ifdef max
+	#undef max
+#endif
 #endif
 
 #ifdef __linux__
@@ -171,16 +175,15 @@ Serial::Serial(std::string Port)
 			Port = "Not Found";
 		}
 	}
+
+	if (Port == "Not Found")
+	{
+		throw new std::exception("ERROR: PRINTER COMM PORT NOT FOUND");
+	}
+	std::cout << "Printer found port " << Port << std::endl;
+
 	mPort = Port;
 
-	if (mPort == "Not Found")
-	{
-		throw new std::exception("ERROR: PRINTER COM PORT NOT FOUND");
-		exit(0);
-	}
-
-
-	std::cout << "Printer found port " << Port << std::endl;
 }
 
 void Serial::Open()
@@ -205,7 +208,7 @@ void Serial::Open()
 		switch (error)
 		{
 		case ERROR_FILE_NOT_FOUND:
-			throw new std::exception("ERROR: PRINTER COM PORT DOES NOT EXIST");
+			throw new std::exception("ERROR: COMM PORT DOES NOT EXIST");
 		default:
 			throw new std::exception("ERROR: UNKNOWN ERROR OCCURED WHILE OPENING SERIAL PORT");
 		}
@@ -213,21 +216,100 @@ void Serial::Open()
 
 	mIsOpen = true;
 
+	DCB serialParameters;
+	GetCommState(mHComm, &serialParameters);
+
+	serialParameters.BaudRate = CBR_9600;
+	serialParameters.ByteSize = 8;
+	serialParameters.StopBits = ONESTOPBIT;
+	serialParameters.Parity = EVENPARITY;
+
+	serialParameters.fOutxCtsFlow = false;
+	serialParameters.fRtsControl = RTS_CONTROL_DISABLE;
+	serialParameters.fOutX = true;
+	serialParameters.fInX = true;
+
+	if (!SetCommState(mHComm, &serialParameters))
+	{
+		throw new std::exception("ERROR: UNABLE TO SETUP COMM PORT");
+	}
+
+
+	COMMTIMEOUTS timeouts;
+
+	timeouts.ReadIntervalTimeout = std::numeric_limits<uint32_t>::max();
+	timeouts.ReadTotalTimeoutConstant = 1000;
+	timeouts.ReadTotalTimeoutMultiplier = 0;
+	timeouts.WriteTotalTimeoutConstant = 1000;
+	timeouts.WriteTotalTimeoutMultiplier = 0;
+	
+	if (!SetCommTimeouts(mHComm, &timeouts))
+	{
+		throw new std::exception("ERROR: UNABLE TO SETTUP COMM PORT TIMEOUTS");
+	}
 }
 
 void Serial::Close()
 {
+	if (!mIsOpen) return;
+	if (mHComm == INVALID_HANDLE_VALUE)
+	{
+		mIsOpen = false;
+		return;
+	}
 
+	int status = CloseHandle(mHComm);
+	if (status == 0)
+	{
+		throw new std::exception("ERROR: UNABLE TO CLOSE COMM PORT");
+	}
+
+	mHComm = INVALID_HANDLE_VALUE;
+	mIsOpen = false;
 }
 
-void Serial::WriteByte(uint8_t Byte)
+size_t Serial::ReadByteBuffer(uint8_t* Buffer, size_t Length)
 {
+	if (!mIsOpen) return static_cast<size_t>(-1);
 
+	DWORD numBytesRead;
+	if (!ReadFile(mHComm, Buffer, static_cast<DWORD>(Length), &numBytesRead, NULL))
+	{
+		throw new std::exception("ERROR: UNNABLE TO READ FROM COMM PORT");
+	}
+
+	return (size_t)numBytesRead;
 }
 
-uint8_t* Serial::ReadByteBuffer()
+size_t Serial::WriteByte(uint8_t Byte)
 {
-	return new uint8_t[256];
+	if (!mIsOpen) return static_cast<size_t>(-1);
+
+	DWORD numBytesWritten;
+	if (!WriteFile(mHComm, &Byte, static_cast<DWORD>(1), &numBytesWritten, NULL))
+	{
+		throw new std::exception("ERROR: UNNABLE TO WRITE TO COMM PORT");
+	}
+
+	return (size_t)numBytesWritten;
+}
+
+size_t Serial::Write(const uint8_t* Data, const size_t Length)
+{
+	if (!mIsOpen) return static_cast<size_t>(-1);
+
+	DWORD numBytesWritten;
+	if (!WriteFile(mHComm, Data, static_cast<DWORD>(Length), &numBytesWritten, NULL))
+	{
+		throw new std::exception("ERROR: UNNABLE TO WRITE TO COMM PORT");
+	}
+
+	return (size_t)numBytesWritten;
+}
+
+bool Serial::IsOpen()
+{
+	return mIsOpen;
 }
 
 #endif
@@ -239,5 +321,7 @@ uint8_t* Serial::ReadByteBuffer()
 Printer::Printer(std::string SerialPort)
 {
 	Serial serial(SerialPort);
+	serial.Open();
+	serial.Close();
 }
 

@@ -4,6 +4,6 @@
 
 int main(int* argc, char** argv)
 {
-	Printer printer;
+	Printer printer("COM2");
 
 }

@@ -23,10 +23,15 @@ class Serial
 {
 public:
 	Serial(std::string Port = "AUTO");
+
 	void Open();
 	void Close();
-	void WriteByte(uint8_t Byte);
-	uint8_t* ReadByteBuffer();
+
+	size_t ReadByteBuffer(uint8_t* Buffer, size_t Length);
+	size_t WriteByte(const uint8_t Byte);
+	size_t Write(const uint8_t* Data, const size_t Length);
+
+	bool IsOpen();
 private:
 	bool mIsOpen = false;
 	std::string mPort = "NONE";
