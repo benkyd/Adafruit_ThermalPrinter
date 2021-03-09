@@ -1,5 +1,11 @@
 #include "printer.hpp"
 
+#include <thread>
+#include <chrono>
+
+using namespace std::chrono_literals;
+
+
 #ifdef _WIN32
 #pragma comment (lib, "Setupapi.lib")
 
@@ -159,8 +165,9 @@ std::vector<PortInfo> GetPortList()
 
 #ifdef _WIN32
 
-Serial::Serial(std::string Port)
-	: mHComm(0)
+Serial::Serial(bool DoStdOut, std::string Port)
+	: mDoLog(DoStdOut)
+	, mHComm(0)
 {
 	if (Port == "AUTO")
 	{
@@ -180,7 +187,9 @@ Serial::Serial(std::string Port)
 	{
 		throw new std::exception("ERROR: PRINTER COMM PORT NOT FOUND");
 	}
-	std::cout << "Printer found port " << Port << std::endl;
+
+	if (mDoLog)
+		std::cout << "SERIAL: Port " << Port << " found" << std::endl;
 
 	mPort = Port;
 
@@ -215,6 +224,10 @@ void Serial::Open()
 	}
 
 	mIsOpen = true;
+	
+	if (mDoLog)
+		std::cout << "SERIAL: Opened comm port " << mPort << std::endl;
+
 
 	DCB serialParameters;
 	GetCommState(mHComm, &serialParameters);
@@ -233,6 +246,9 @@ void Serial::Open()
 	{
 		throw new std::exception("ERROR: UNABLE TO SETUP COMM PORT");
 	}
+
+	if (mDoLog)
+		std::cout << "SERIAL: Configured comm port " << mPort << std::endl;
 
 
 	COMMTIMEOUTS timeouts;
@@ -266,11 +282,17 @@ void Serial::Close()
 
 	mHComm = INVALID_HANDLE_VALUE;
 	mIsOpen = false;
+
+	if (mDoLog)
+		std::cout << "SERIAL: Closed comm port " << mPort << std::endl;
 }
 
 size_t Serial::ReadByteBuffer(uint8_t* Buffer, size_t Length)
 {
 	if (!mIsOpen) return static_cast<size_t>(-1);
+
+	if (mDoLog)
+		std::cout << "SERIAL: Reading " << Length << " bytes from " << mPort << std::endl;
 
 	DWORD numBytesRead;
 	if (!ReadFile(mHComm, Buffer, static_cast<DWORD>(Length), &numBytesRead, NULL))
@@ -285,10 +307,50 @@ size_t Serial::WriteByte(uint8_t Byte)
 {
 	if (!mIsOpen) return static_cast<size_t>(-1);
 
-	DWORD numBytesWritten;
-	if (!WriteFile(mHComm, &Byte, static_cast<DWORD>(1), &numBytesWritten, NULL))
+	return (size_t)WriteBytes({ Byte });;
+}
+
+size_t Serial::WriteBytes(std::initializer_list<const uint8_t> Bytes)
+{
+	if (!mIsOpen) return static_cast<size_t>(-1);
+
+	if (mDoLog)
+		std::cout << "SERIAL: Writing " << Bytes.size() << " bytes to " << mPort << std::endl;
+
+	DWORD numBytesWritten = 0;
+
+	for (const auto& byte : Bytes)
 	{
-		throw new std::exception("ERROR: UNNABLE TO WRITE TO COMM PORT");
+		if (mDoLog)
+			std::cout << "SERIAL: Writing " << byte << " to " << mPort << std::endl;		DWORD tempNumBytesWritten;
+		if (!WriteFile(mHComm, &byte, static_cast<DWORD>(1), &tempNumBytesWritten, NULL))
+		{
+			throw new std::exception("ERROR: UNNABLE TO WRITE TO COMM PORT");
+		}
+		numBytesWritten += tempNumBytesWritten;
+	}
+
+	return (size_t)numBytesWritten;
+}
+
+size_t Serial::WriteBytes(std::vector<uint8_t> Bytes)
+{
+	if (!mIsOpen) return static_cast<size_t>(-1);
+
+	if (mDoLog)
+		std::cout << "SERIAL: Writing " << Bytes.size() << " bytes to " << mPort << std::endl;
+
+	DWORD numBytesWritten = 0;
+
+	for (const auto& byte : Bytes)
+	{
+		if (mDoLog)
+			std::cout << "SERIAL: Writing " << byte << " to " << mPort << std::endl;		DWORD tempNumBytesWritten;
+		if (!WriteFile(mHComm, &byte, static_cast<DWORD>(1), &tempNumBytesWritten, NULL))
+		{
+			throw new std::exception("ERROR: UNNABLE TO WRITE TO COMM PORT");
+		}
+		numBytesWritten += tempNumBytesWritten;
 	}
 
 	return (size_t)numBytesWritten;
@@ -297,6 +359,9 @@ size_t Serial::WriteByte(uint8_t Byte)
 size_t Serial::Write(const uint8_t* Data, const size_t Length)
 {
 	if (!mIsOpen) return static_cast<size_t>(-1);
+
+	if (mDoLog)
+		std::cout << "SERIAL: Writing " << Length << " bytes to " << mPort << std::endl;
 
 	DWORD numBytesWritten;
 	if (!WriteFile(mHComm, Data, static_cast<DWORD>(Length), &numBytesWritten, NULL))
@@ -315,13 +380,80 @@ bool Serial::IsOpen()
 #endif
 
 
-
-
-
-Printer::Printer(std::string SerialPort)
+Printer::Printer(bool DoStdOut, std::string SerialPort)
+	: mDoLog(DoStdOut)
 {
-	Serial serial(SerialPort);
-	serial.Open();
-	serial.Close();
+	mSerial = new Serial(DoStdOut, SerialPort);
+	mSerial->Open();
+
+	// wake
+	mSerial->WriteByte(255);
+	for (uint8_t i = 0; i < 10; i++) {
+		mSerial->WriteByte(0);
+		std::this_thread::sleep_for(50ms);
+	}
+
+	// reset
+	mSerial->WriteBytes({ ASCII_ESC, '@' });
+
+	// init
+	mSerial->WriteBytes({ ASCII_ESC, '7' }); // print setting
+	mSerial->WriteBytes({ 11, 120, 40 }); // heat time
+	mSerial->WriteBytes({ ASCII_DC2, (2 << 5) | 10 }); // print density
+
+	std::this_thread::sleep_for(200ms);
+
+	this->WriteString("Hello world printer test");
+	std::this_thread::sleep_for(200ms);
+
+	mSerial->WriteBytes({ ASCII_ESC, 'J', 100 }); // feed 2 rows
+
+}
+
+
+void Printer::Write(uint8_t Byte)
+{
+
+}
+
+void Printer::WriteString(std::string String)
+{
+	std::vector<uint8_t> bytesToWrite;
+	
+	for (const auto& character : String)
+	{
+		bytesToWrite.push_back({ static_cast<uint8_t>(character) });
+	}
+
+	this->mWriteSerialBufferBytes(bytesToWrite);
+}
+
+
+
+size_t Printer::mWriteSerialBufferBytes(std::vector<uint8_t> Bytes)
+{
+	mTimeoutWait();
+	// Split buffer by 4 bytes and wait bytetime
+	size_t timeoutWait = Bytes.size();
+	size_t bytesWritten = mSerial->WriteBytes(Bytes);
+	mTimeoutSet(timeoutWait * BYTE_TIME);
+	return bytesWritten;
+}
+
+void Printer::mTimeoutSet(int ms)
+{
+
+}
+
+void Printer::mTimeoutWait()
+{
+
+}
+
+
+
+Printer::~Printer()
+{
+	mSerial->Close();
 }
 
