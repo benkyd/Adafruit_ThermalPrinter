@@ -20,6 +20,7 @@ using namespace std::chrono_literals;
 #endif
 #endif
 
+
 #ifdef __linux__
 #include <glob.h>
 #include <sys/types.h>
@@ -386,6 +387,9 @@ Printer::Printer(bool DoStdOut, std::string SerialPort)
 	mSerial = new Serial(DoStdOut, SerialPort);
 	mSerial->Open();
 
+	// printer needs 2s to initialize
+	std::this_thread::sleep_for(2000ms);
+
 	// wake
 	mSerial->WriteByte(255);
 	for (uint8_t i = 0; i < 10; i++) {
@@ -403,10 +407,10 @@ Printer::Printer(bool DoStdOut, std::string SerialPort)
 
 	std::this_thread::sleep_for(200ms);
 
-	this->WriteString("Hello world printer test");
+	this->WriteString("Ines is really poggers");
 	std::this_thread::sleep_for(200ms);
 
-	mSerial->WriteBytes({ ASCII_ESC, 'J', 100 }); // feed 2 rows
+	mSerial->WriteBytes({ ASCII_ESC, 'J', 255 }); // feed 2 rows
 
 }
 
