@@ -1,7 +1,9 @@
 #ifndef ADAFRUIT_THERMALPRINTER_SERIAL_H_
 #define ADAFRUIT_THERMALPRINTER_SERIAL_H_
 
-
+#include <iostream>
+#include <string>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -33,7 +35,7 @@ public:
 
 	bool IsOpen();
 private:
-	bool mDoLog;
+	bool mDoLog = false;
 	bool mIsOpen = false;
 	std::string mPort = "NONE";
 #ifdef _WIN32

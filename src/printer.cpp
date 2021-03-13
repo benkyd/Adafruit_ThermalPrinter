@@ -18,27 +18,22 @@ Printer::Printer(bool DoStdOut, std::string SerialPort)
 	std::this_thread::sleep_for(2000ms);
 
 	// wake
-	mSerial->WriteByte(255);
+	this->mWriteSerialBufferBytes({ 255 });
+	// flush buffer
 	for (uint8_t i = 0; i < 10; i++) {
-		mSerial->WriteByte(0);
+		this->mWriteSerialBufferBytes({ 0 });
 		std::this_thread::sleep_for(50ms);
 	}
 
 	// reset
-	mSerial->WriteBytes({ ASCII_ESC, '@' });
+	this->mWriteSerialBufferBytes({ ASCII_ESC, '@' });
 
 	// init
-	mSerial->WriteBytes({ ASCII_ESC, '7' }); // print setting
-	mSerial->WriteBytes({ 11, 120, 40 }); // heat time
-	mSerial->WriteBytes({ ASCII_DC2, (2 << 5) | 10 }); // print density
-
+	this->mWriteSerialBufferBytes({ ASCII_ESC, '7' }); // print setting
+	// Max printing dots, heating time, heating interval
+	this->mWriteSerialBufferBytes({ 255, 100, 20 }); // heat time
+	this->mWriteSerialBufferBytes({ ASCII_DC2, (2 << 5) | 10 }); // print density
 	std::this_thread::sleep_for(200ms);
-
-	this->WriteString("Ines is really poggers");
-	std::this_thread::sleep_for(200ms);
-
-	mSerial->WriteBytes({ ASCII_ESC, 'J', 255 }); // feed 2 rows
-
 }
 
 
@@ -59,26 +54,39 @@ void Printer::WriteString(std::string String)
 	this->mWriteSerialBufferBytes(bytesToWrite);
 }
 
+void Printer::Feed(uint8_t Lines)
+{
+	// Characters are 12x24 dots
+	this->mWriteSerialBufferBytes({ ASCII_ESC, 'J', 30 });
+}
+
 
 
 size_t Printer::mWriteSerialBufferBytes(std::vector<uint8_t> Bytes)
 {
-	mTimeoutWait();
+	// mTimeoutWait();
 	// Split buffer by 4 bytes and wait bytetime
 	size_t timeoutWait = Bytes.size();
 	size_t bytesWritten = mSerial->WriteBytes(Bytes);
-	mTimeoutSet(timeoutWait * BYTE_TIME);
+	// mTimeoutSet(timeoutWait * BYTE_TIME);
 	return bytesWritten;
 }
 
 void Printer::mTimeoutSet(int ms)
 {
+	mWaitTime = ms;
+}
 
+void Printer::mTimeoutAccumilate(int ms)
+{
+	mWaitTime += ms;
 }
 
 void Printer::mTimeoutWait()
 {
-
+	std::cout << "PRINTER: WAITING " << mWaitTime << "MS" << std::endl;
+	std::this_thread::sleep_for(std::chrono::milliseconds(mWaitTime));
+	mWaitTime = 0;
 }
 
 

@@ -5,6 +5,13 @@
 #include <string>
 #include <vector>
 
+class Serial;
+
+// TODO: Make the library asynchronus, run alongside a main program
+// so that the sleeps that are neccesary do not halt the program
+// will probably need to do this to print for NodeJS
+// Will require a queue
+
 // ASCII codes used by some of the printer config commands:
 #define ASCII_TAB '\t' // Horizontal tab
 #define ASCII_LF '\n'  // Line feed
@@ -52,7 +59,6 @@ private:
 	int mDefaultHeatTime;
 	int mFirmwareVersion = 268;
 
-
 public:
 
 	Printer(bool DoStdOut = true, std::string SerialPort = "AUTO");
@@ -72,8 +78,9 @@ private:
 	size_t mWriteSerialBufferBytes(std::vector<uint8_t> Bytes);
 
 	void mTimeoutSet(int ms);
+	void mTimeoutAccumilate(int ms);
 	void mTimeoutWait();
-	int mResumeTime;
+	int mWaitTime = 0;
 
 };
 
