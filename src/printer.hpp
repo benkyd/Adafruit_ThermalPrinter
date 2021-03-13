@@ -5,46 +5,6 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
-class PortInfo
-{
-public:
-	std::string Port;
-	std::string Desc;
-	std::string HWID;
-};
-
-std::vector<PortInfo> GetPortList();
-
-class Serial
-{
-public:
-	Serial(bool DoStdOut = true, std::string Port = "AUTO");
-
-	void Open();
-	void Close();
-
-	size_t ReadByteBuffer(uint8_t* Buffer, size_t Length);
-	size_t WriteByte(const uint8_t Byte);
-	size_t WriteBytes(std::initializer_list<const uint8_t> Bytes);
-	size_t WriteBytes(std::vector<uint8_t> Bytes);
-	size_t Write(const uint8_t* Data, const size_t Length);
-
-	bool IsOpen();
-private:
-	bool mDoLog;
-	bool mIsOpen = false;
-	std::string mPort = "NONE";
-#ifdef _WIN32
-	HANDLE mHComm;
-#endif
-};
-
-
-
 // ASCII codes used by some of the printer config commands:
 #define ASCII_TAB '\t' // Horizontal tab
 #define ASCII_LF '\n'  // Line feed
@@ -99,6 +59,8 @@ public:
 
 	void Write(uint8_t Byte);
 	void WriteString(std::string String);
+
+	void Feed(uint8_t Lines);
 
 
 	~Printer();
